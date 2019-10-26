@@ -1,6 +1,6 @@
 name: ffi_libserialport
 version: 0.0.1
-author: Ákos Belákovics <belakovics.akos@gmail.com>
+author: Akos Belakovics <belakovics.akos@gmail.com>
 description: >-
   A Dart interface to LibSerialPort through Dart FFI. This library wraps the
   experimental libserialport C API.
