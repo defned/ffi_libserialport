@@ -32,6 +32,8 @@ class SerialPort {
   int get error => _error;
   int _error;
 
+  Function onData;
+
   // Name of device on which the connection is made
   final String portName;
   // Connexion speed
@@ -126,36 +128,36 @@ class SerialPort {
     _onReadController.close();
   }
 
-  // void _readNonBlocking() {
-  //   if (!isOpen) return;
+  void _readNonBlocking() {
+    if (!isOpen) return;
 
-  //   sp_flush(_ttyFd.value, SpBuffer.INPUT);
+    sp_flush(_ttyFd.value, SpBuffer.INPUT);
+    sp_flush(_ttyFd.value, SpBuffer.OUTPUT);
+    while (true) {
+      int bytesWaiting = sp_input_waiting(_ttyFd.value);
 
-  //   while (true) {
-  //     int bytesWaiting = sp_input_waiting(_ttyFd.value);
-  //     if (bytesWaiting > 0) {
-  //       print('Bytes waiting $bytesWaiting');
-  //       Pointer<Uint8> byteBuff = allocate(count: 512);
-  //       int byteNum = sp_nonblocking_read(_ttyFd.value, byteBuff.cast(), 512);
+      if (bytesWaiting > 0) {
+        print('Bytes waiting $bytesWaiting');
+        Pointer<Uint8> byteBuff = allocate(count: 512);
+        int byteNum = sp_nonblocking_read(_ttyFd.value, byteBuff.cast(), 512);
 
-  //       if (byteNum < 0) {
-  //         // cleanup ...
-  //         throw "(sp_blocking_read) $portName : $byteNum";
-  //       }
+        if (byteNum < 0) {
+          // cleanup ...
+          throw "(sp_blocking_read) $portName : $byteNum";
+        }
 
-  //       print(String.fromCharCodes((byteBuff.asTypedList(byteNum))));
+        if (!_onReadController.isClosed) {
+          _onReadController.sink.add(byteBuff.asTypedList(byteNum));
+        }
 
-  //       if (!_onReadController.isClosed) {
-  //         _onReadController.add(byteBuff.asTypedList(byteNum));
-  //       }
+        free(byteBuff);
 
-  //       free(byteBuff);
-
-  //       break;
-  //     } else
-  //       sleep(_delay);
-  //   }
-  // }
+        // break;
+      }
+      //  else
+      //   sleep(_delay);
+    }
+  }
 
   void _readBlocking() {
     if (!isOpen) return;
@@ -178,7 +180,10 @@ class SerialPort {
       print(String.fromCharCodes((byteBuff.asTypedList(byteNum))));
 
       if (!_onReadController.isClosed) {
-        _onReadController.add(byteBuff.asTypedList(byteNum));
+        _onReadController.sink.add(byteBuff.asTypedList(byteNum));
+      }
+      if (onData != null) {
+        onData(byteBuff.asTypedList(byteNum));
       }
 
       free(byteBuff);
