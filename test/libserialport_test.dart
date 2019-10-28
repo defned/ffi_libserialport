@@ -13,9 +13,13 @@ final dataDir = path.join(Directory.current.path, 'testdata');
 void createIsolate(SendPort port) {
   SerialPort sp = SerialPort(SerialPort.getAvailablePorts()[0]);
   sp.open();
-  sp.onRead.listen((onData) {
-    port.send(onData);
-  });
+  // sp.onRead.listen((onData) {
+  sp.onData = (onData) {
+    String data = String.fromCharCodes(onData);
+    print("[ISOLATE] data: " + data);
+    port.send(data);
+  };
+  // );
 }
 
 void main() async {
@@ -30,11 +34,16 @@ void main() async {
     test('List ports', () {
       int mutex;
       replyPort.listen((onData) {
-        print(onData);
+        print("Card input has arrived: " + onData);
         i.kill(priority: Isolate.immediate);
         mutex = 0;
+      }, onDone: () {
+        print("done!");
       });
-      while(mutex == null) { sleep(Duration(milliseconds: 1000)); print("Waiting for card input ... "); }
+      while (mutex == null) {
+        sleep(Duration(milliseconds: 1000));
+        print("Waiting for card input ... ");
+      }
     });
   });
 }

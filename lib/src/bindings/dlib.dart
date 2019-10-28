@@ -2,10 +2,10 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-import 'dart:cli' as cli;
 import 'dart:ffi';
 import 'dart:io';
-import 'dart:isolate' show Isolate;
+
+import 'package:path/path.dart';
 
 const Set<String> _supported = {'linux64', 'mac64', 'win64'};
 
@@ -37,20 +37,55 @@ String _getObjectFilename() {
 }
 
 /// LibSerialPort C library.
-DynamicLibrary splib = () {
-  String objectFile;
-  if (Platform.script.path.endsWith('.snapshot')) {
-    // If we're running from snapshot, assume that the shared object
-    // file is a sibling.
-    objectFile =
-        File.fromUri(Platform.script).parent.path + '/' + _getObjectFilename();
-  } else {
-    final rootLibrary = 'package:ffi_libserialport/libserialport.dart';
-    final blobs = cli
-        .waitFor(Isolate.resolvePackageUri(Uri.parse(rootLibrary)))
-        .resolve('src/blobs/');
-    objectFile = blobs.resolve(_getObjectFilename()).toFilePath();
+DynamicLibrary splib = (() {
+  var transformUri = (String uri) {
+    int pathBeg = uri.indexOf("file:///");
+    if (pathBeg != null && pathBeg > 0) {
+      uri = uri.substring(pathBeg);
+      return Uri.parse(uri).path;
+    }
+    return uri;
+  };
+
+  String objectFile = "";
+  List<String> searchPaths = [
+    join(File(Platform.resolvedExecutable).parent.path, _getObjectFilename()),
+    join(Directory(".").absolute.parent.path, _getObjectFilename()),
+    transformUri(Platform.script
+            .resolve("src/blobs/")
+            .resolve(_getObjectFilename())
+            .path)
+        .substring(Platform.isWindows ? 1 : 0),
+    transformUri(Platform.script
+            .resolve("blobs/")
+            .resolve(_getObjectFilename())
+            .path)
+        .substring(Platform.isWindows ? 1 : 0),
+    transformUri(Platform.script
+            .resolve("src/blobs/")
+            .resolve(_getObjectFilename())
+            .path)
+        .substring(Platform.isWindows ? 1 : 0)
+        .replaceAll("test/", "lib/"),
+    transformUri(Platform.script
+            .resolve("blobs/")
+            .resolve(_getObjectFilename())
+            .path)
+        .substring(Platform.isWindows ? 1 : 0)
+        .replaceAll("test/", "lib/"),
+  ];
+
+  for (int i = 0; i < searchPaths.length; i++) {
+    if (File(searchPaths[i]).existsSync()) {
+      objectFile = searchPaths[i];
+      break;
+    }
   }
 
+  if (objectFile.isEmpty) {
+    throw "libseriaport library not found at [$searchPaths]";
+  }
+
+  print("Found libserialport library at '$objectFile'");
   return DynamicLibrary.open(objectFile);
-}();
+})();
