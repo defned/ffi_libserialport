@@ -177,7 +177,7 @@ class SerialPort {
         throw "(sp_blocking_read) $portName : $byteNum";
       }
 
-      print(String.fromCharCodes((byteBuff.asTypedList(byteNum))));
+      // print(String.fromCharCodes((byteBuff.asTypedList(byteNum))));
 
       if (!_onReadController.isClosed) {
         _onReadController.sink.add(byteBuff.asTypedList(byteNum));
