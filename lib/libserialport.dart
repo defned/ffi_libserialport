@@ -9,6 +9,7 @@ import 'dart:async';
 import 'dart:ffi';
 import 'dart:typed_data';
 
+import 'package:async/async.dart';
 import 'package:ffi/ffi.dart';
 import 'package:ffi_libserialport/src/ffi/helper.dart';
 
@@ -111,14 +112,14 @@ class SerialPort {
     sp_set_stopbits(_ttyFd.value, stopbits);
     sp_set_parity(_ttyFd.value, parity);
 
-    Timer(_delay, _readBlocking);
+    Timer(_delay, _readNonBlocking);
     return;
   }
 
   /// Close the connection
   void close() {
     _checkOpen();
-
+    _lastRead.cancel();
     if ((_error = sp_close(_ttyFd.value)) != SpReturn.OK) {
       free(_ttyFd);
       _ttyFd = nullptr;
@@ -133,7 +134,8 @@ class SerialPort {
 
     sp_flush(_ttyFd.value, SpBuffer.INPUT);
     sp_flush(_ttyFd.value, SpBuffer.OUTPUT);
-    while (true) {
+    var read;
+    read = () {
       int bytesWaiting = sp_input_waiting(_ttyFd.value);
 
       if (bytesWaiting > 0) {
@@ -149,16 +151,24 @@ class SerialPort {
         if (!_onReadController.isClosed) {
           _onReadController.sink.add(byteBuff.asTypedList(byteNum));
         }
+        if (onData != null) {
+          onData(byteBuff.asTypedList(byteNum));
+        }
 
         free(byteBuff);
-
-        // break;
       }
-      //  else
-      //   sleep(_delay);
-    }
+      _lastRead = CancelableOperation.fromFuture(
+          Future.delayed(Duration(milliseconds: 100), read), onCancel: () {
+        print("Cancelled");
+      });
+    };
+    _lastRead = CancelableOperation.fromFuture(
+        Future.delayed(Duration(milliseconds: 100), read), onCancel: () {
+      print("Cancelled");
+    });
   }
 
+  CancelableOperation _lastRead;
   void _readBlocking() {
     if (!isOpen) return;
 
@@ -170,7 +180,7 @@ class SerialPort {
     if (bytesWaiting > 0) {
       print('Bytes waiting $bytesWaiting');
       Pointer<Uint8> byteBuff = allocate(count: 512);
-      int byteNum = sp_blocking_read(_ttyFd.value, byteBuff.cast(), 512, 10);
+      int byteNum = sp_blocking_read(_ttyFd.value, byteBuff.cast(), 512, 500);
 
       if (byteNum < 0) {
         // cleanup ...
