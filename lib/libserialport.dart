@@ -159,12 +159,12 @@ class SerialPort {
       }
       _lastRead = CancelableOperation.fromFuture(
           Future.delayed(Duration(milliseconds: 100), read), onCancel: () {
-        print("Cancelled");
+        // print("Cancelled");
       });
     };
     _lastRead = CancelableOperation.fromFuture(
         Future.delayed(Duration(milliseconds: 100), read), onCancel: () {
-      print("Cancelled");
+      // print("Cancelled");
     });
   }
 
