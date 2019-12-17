@@ -1,6 +1,6 @@
-// Copyright (c) 2019, the Dart project authors. Please see the AUTHORS file
+// Copyright (c) 2019, the ffi_libserialport project authors. Please see the AUTHORS file
 // for details. All rights reserved. Use of this source code is governed by a
-// BSD-style license that can be found in the LICENSE file.
+// MIT license that can be found in the LICENSE file.
 
 /// LibSerialPort for Dart
 library libserialport;
@@ -8,13 +8,17 @@ library libserialport;
 import 'dart:async';
 import 'dart:ffi';
 import 'dart:typed_data';
+import 'dart:io';
 
 import 'package:async/async.dart';
-import 'package:ffi/ffi.dart';
 import 'package:ffi_libserialport/src/ffi/helper.dart';
+import 'package:ffi/ffi.dart' as ffi;
 
-import 'src/bindings/bindings.dart';
-import 'src/bindings/types.dart';
+import 'package:path/path.dart';
+
+part 'src/bindings/types.dart';
+part 'src/bindings/bindings.dart';
+part 'src/bindings/dlib.dart';
 
 class SerialPort {
   // static int _kMaxSmi64 = (1 << 62) - 1;
@@ -65,12 +69,12 @@ class SerialPort {
   }
 
   /// Version information.
-  String get version => Utf8.fromUtf8(SpVersion());
+  String get version => ffi.Utf8.fromUtf8(SpVersion());
 
   /// Retrieves with the system wide available ports
   static List<String> getAvailablePorts() {
     List<String> portList = [];
-    Pointer<Pointer<Pointer<SpPort>>> ports = allocate();
+    Pointer<Pointer<Pointer<SpPort>>> ports = ffi.allocate();
 
     int status = sp_list_ports(ports);
     if (status != SpReturn.OK)
@@ -78,11 +82,11 @@ class SerialPort {
 
     final Pointer<Pointer<SpPort>> refPorts = ports.value;
     for (int i = 0; isNotNull(refPorts.elementAt(i).value); i++) {
-      portList.add(Utf8.fromUtf8(refPorts.elementAt(i).value.ref.name));
+      portList.add(ffi.Utf8.fromUtf8(refPorts.elementAt(i).value.ref.name));
     }
 
     sp_free_port_list(ports.value);
-    free(ports);
+    ffi.free(ports);
     return portList;
   }
 
@@ -92,17 +96,17 @@ class SerialPort {
       throw "$portName is already opened";
     }
 
-    _ttyFd = allocate();
-    Pointer<Utf8> name = Utf8.toUtf8(portName);
+    _ttyFd = ffi.allocate();
+    Pointer<ffi.Utf8> name = ffi.Utf8.toUtf8(portName);
 
     if ((_error = sp_get_port_by_name(name, _ttyFd)) != SpReturn.OK) {
-      free(_ttyFd);
+      ffi.free(_ttyFd);
       _ttyFd = nullptr;
       throw "(sp_get_port_by_name) $portName : $error";
     }
 
     if ((_error = sp_open(_ttyFd.value, SpMode.READ)) != SpReturn.OK) {
-      free(_ttyFd);
+      ffi.free(_ttyFd);
       _ttyFd = nullptr;
       throw "(sp_open) $portName : $error";
     }
@@ -121,7 +125,7 @@ class SerialPort {
     _checkOpen();
     _lastRead.cancel();
     if ((_error = sp_close(_ttyFd.value)) != SpReturn.OK) {
-      free(_ttyFd);
+      ffi.free(_ttyFd);
       _ttyFd = nullptr;
       throw "(sp_close) $portName : $error";
     }
@@ -140,7 +144,7 @@ class SerialPort {
 
       if (bytesWaiting > 0) {
         print('Bytes waiting $bytesWaiting');
-        Pointer<Uint8> byteBuff = allocate(count: 512);
+        Pointer<Uint8> byteBuff = ffi.allocate(count: 512);
         int byteNum = sp_nonblocking_read(_ttyFd.value, byteBuff.cast(), 512);
 
         if (byteNum < 0) {
@@ -155,7 +159,7 @@ class SerialPort {
           onData(byteBuff.asTypedList(byteNum));
         }
 
-        free(byteBuff);
+        ffi.free(byteBuff);
       }
       _lastRead = CancelableOperation.fromFuture(
           Future.delayed(Duration(milliseconds: 100), read), onCancel: () {
@@ -169,60 +173,60 @@ class SerialPort {
   }
 
   CancelableOperation _lastRead;
-  void _readBlocking() {
-    if (!isOpen) return;
+  // void _readBlocking() {
+  //   if (!isOpen) return;
 
-    sp_flush(_ttyFd.value, SpBuffer.INPUT);
+  //   sp_flush(_ttyFd.value, SpBuffer.INPUT);
 
-    _waitForEvent();
+  //   _waitForEvent();
 
-    int bytesWaiting = sp_input_waiting(_ttyFd.value);
-    if (bytesWaiting > 0) {
-      print('Bytes waiting $bytesWaiting');
-      Pointer<Uint8> byteBuff = allocate(count: 512);
-      int byteNum = sp_blocking_read(_ttyFd.value, byteBuff.cast(), 512, 500);
+  //   int bytesWaiting = sp_input_waiting(_ttyFd.value);
+  //   if (bytesWaiting > 0) {
+  //     print('Bytes waiting $bytesWaiting');
+  //     Pointer<Uint8> byteBuff = ffi.allocate(count: 512);
+  //     int byteNum = sp_blocking_read(_ttyFd.value, byteBuff.cast(), 512, 500);
 
-      if (byteNum < 0) {
-        // cleanup ...
-        throw "(sp_blocking_read) $portName : $byteNum";
-      }
+  //     if (byteNum < 0) {
+  //       // cleanup ...
+  //       throw "(sp_blocking_read) $portName : $byteNum";
+  //     }
 
-      // print(String.fromCharCodes((byteBuff.asTypedList(byteNum))));
+  //     // print(String.fromCharCodes((byteBuff.asTypedList(byteNum))));
 
-      if (!_onReadController.isClosed) {
-        _onReadController.sink.add(byteBuff.asTypedList(byteNum));
-      }
-      if (onData != null) {
-        onData(byteBuff.asTypedList(byteNum));
-      }
+  //     if (!_onReadController.isClosed) {
+  //       _onReadController.sink.add(byteBuff.asTypedList(byteNum));
+  //     }
+  //     if (onData != null) {
+  //       onData(byteBuff.asTypedList(byteNum));
+  //     }
 
-      free(byteBuff);
-    }
+  //     ffi.free(byteBuff);
+  //   }
 
-    _readBlocking();
-  }
+  //   _readBlocking();
+  // }
 
-  int _waitForEvent() {
-    Pointer<Pointer<SpEventSet>> eventSet = allocate();
+  // int _waitForEvent() {
+  //   Pointer<Pointer<SpEventSet>> eventSet = ffi.allocate();
 
-    if ((_error = sp_new_event_set(eventSet)) != SpReturn.OK) {
-      free(eventSet);
-      throw '(sp_new_event_set) $portName : $error';
-    }
+  //   if ((_error = sp_new_event_set(eventSet)) != SpReturn.OK) {
+  //     ffi.free(eventSet);
+  //     throw '(sp_new_event_set) $portName : $error';
+  //   }
 
-    if ((_error = sp_add_port_events(
-            eventSet.value, _ttyFd.value, SpEvent.RX_READY | SpEvent.ERROR)) !=
-        SpReturn.OK) {
-      free(eventSet);
-      throw '(sp_new_event_set) $portName : $error';
-    }
+  //   if ((_error = sp_add_port_events(
+  //           eventSet.value, _ttyFd.value, SpEvent.RX_READY | SpEvent.ERROR)) !=
+  //       SpReturn.OK) {
+  //     ffi.free(eventSet);
+  //     throw '(sp_new_event_set) $portName : $error';
+  //   }
 
-    int res = sp_wait(eventSet.value, 10000);
+  //   int res = sp_wait(eventSet.value, 10000);
 
-    sp_free_event_set(eventSet.value);
+  //   sp_free_event_set(eventSet.value);
 
-    return res;
-  }
+  //   return res;
+  // }
 
   _checkOpen() {
     if (!isOpen) {

@@ -2,19 +2,14 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-import 'dart:ffi';
-
-import 'package:ffi/ffi.dart';
-
-import 'dlib.dart';
-import 'types.dart';
+part of libserialport;
 
 /// Version information for the LibSerialPort library.
-Pointer<Utf8> Function() SpVersion = splib
+Pointer<ffi.Utf8> Function() SpVersion = splib
     .lookup<NativeFunction<_sp_native_t>>('sp_get_package_version_string')
     .asFunction();
 
-typedef _sp_native_t = Pointer<Utf8> Function();
+typedef _sp_native_t = Pointer<ffi.Utf8> Function();
 
 /**
  * @defgroup Enumeration Port enumeration
@@ -42,13 +37,13 @@ typedef _sp_native_t = Pointer<Utf8> Function();
  * @since 0.1.0
  */
 // enum sp_return sp_get_port_by_name(const char *portname, struct sp_port **port_ptr);
-int Function(Pointer<Utf8> portname, Pointer<Pointer<SpPort>> port_ptr)
+int Function(Pointer<ffi.Utf8> portname, Pointer<Pointer<SpPort>> port_ptr)
     sp_get_port_by_name = splib
         .lookup<NativeFunction<_sp_get_port_by_name_native_t>>(
             'sp_get_port_by_name')
         .asFunction();
 typedef _sp_get_port_by_name_native_t = Int32 Function(
-    Pointer<Utf8> portname, Pointer<Pointer<SpPort>> port_ptr);
+    Pointer<ffi.Utf8> portname, Pointer<Pointer<SpPort>> port_ptr);
 
 /**
  * Free a port structure obtained from sp_get_port_by_name() or sp_copy_port().
