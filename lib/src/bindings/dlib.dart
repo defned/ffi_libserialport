@@ -47,6 +47,11 @@ DynamicLibrary splib = (() {
   String objectFile = "";
   List<String> searchPaths = [
     join(File(Platform.resolvedExecutable).parent.path, _getObjectFilename()),
+    if (Platform.isMacOS)
+      join(
+          join(File(Platform.resolvedExecutable).parent.parent.path,
+              "Frameworks/App.framework/Versions/A/Resources/flutter_assets/blobs/"),
+          _getObjectFilename()),
     join(Directory(".").absolute.parent.path, _getObjectFilename()),
     transformUri(Platform.script
             .resolve("src/blobs/")
