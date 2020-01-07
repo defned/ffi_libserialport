@@ -208,6 +208,77 @@ typedef _sp_set_stopbits_native_t = Int32 Function(
     Pointer<SpPort> port, Int32 stopbits);
 
 /**
+ * Write bytes to the specified serial port, blocking until complete.
+ *
+ * Note that this function only ensures that the accepted bytes have been
+ * written to the OS; they may be held in driver or hardware buffers and not
+ * yet physically transmitted. To check whether all written bytes have actually
+ * been transmitted, use the sp_output_waiting() function. To wait until all
+ * written bytes have actually been transmitted, use the sp_drain() function.
+ *
+ * @warning If your program runs on Unix, defines its own signal handlers, and
+ *          needs to abort blocking writes when these are called, then you
+ *          should not use this function. It repeats system calls that return
+ *          with EINTR. To be able to abort a write from a signal handler, you
+ *          should implement your own blocking write using sp_nonblocking_write()
+ *          together with a blocking method that makes sense for your program.
+ *          E.g. you can obtain the file descriptor for an open port using
+ *          sp_get_port_handle() and use this to call select() or pselect(),
+ *          with appropriate arrangements to return if a signal is received.
+ *
+ * @param[in] port Pointer to a port structure. Must not be NULL.
+ * @param[in] buf Buffer containing the bytes to write. Must not be NULL.
+ * @param[in] count Requested number of bytes to write.
+ * @param[in] timeout_ms Timeout in milliseconds, or zero to wait indefinitely.
+ *
+ * @return The number of bytes written on success, or a negative error code.
+ *         If the number of bytes returned is less than that requested, the
+ *         timeout was reached before the requested number of bytes was
+ *         written. If timeout is zero, the function will always return
+ *         either the requested number of bytes or a negative error code. In
+ *         the event of an error there is no way to determine how many bytes
+ *         were sent before the error occurred.
+ *
+ * @since 0.1.0
+ */
+// enum sp_return sp_blocking_write(struct sp_port *port, const void *buf, size_t count, unsigned int timeout_ms);
+int Function(Pointer<SpPort> port, Pointer<Void> buf, int count, int timeout_ms)
+    sp_blocking_write = splib
+        .lookup<NativeFunction<_sp_blocking_write_native_t>>(
+            'sp_blocking_write')
+        .asFunction();
+typedef _sp_blocking_write_native_t = Int32 Function(
+    Pointer<SpPort> port, Pointer<Void> buf, Int32 count, Uint16 timeout_ms);
+
+/**
+ * Write bytes to the specified serial port, without blocking.
+ *
+ * Note that this function only ensures that the accepted bytes have been
+ * written to the OS; they may be held in driver or hardware buffers and not
+ * yet physically transmitted. To check whether all written bytes have actually
+ * been transmitted, use the sp_output_waiting() function. To wait until all
+ * written bytes have actually been transmitted, use the sp_drain() function.
+ *
+ * @param[in] port Pointer to a port structure. Must not be NULL.
+ * @param[in] buf Buffer containing the bytes to write. Must not be NULL.
+ * @param[in] count Maximum number of bytes to write.
+ *
+ * @return The number of bytes written on success, or a negative error code.
+ *         The number of bytes returned may be any number from zero to the
+ *         maximum that was requested.
+ *
+ * @since 0.1.0
+ */
+// enum sp_return sp_nonblocking_write(struct sp_port *port, const void *buf, size_t count);
+int Function(Pointer<SpPort> port, Pointer<Void> buf, int count)
+    sp_nonblocking_write = splib
+        .lookup<NativeFunction<_sp_nonblocking_write_native_t>>(
+            'sp_nonblocking_write')
+        .asFunction();
+typedef _sp_nonblocking_write_native_t = Int32 Function(
+    Pointer<SpPort> port, Pointer<Void> buf, Int32 count);
+
+/**
  * Gets the number of bytes waiting in the input buffer.
  *
  * @param[in] port Pointer to a port structure. Must not be NULL.
@@ -221,6 +292,21 @@ int Function(Pointer<SpPort> port) sp_input_waiting = splib
     .lookup<NativeFunction<_sp_input_waiting_native_t>>('sp_input_waiting')
     .asFunction();
 typedef _sp_input_waiting_native_t = Int32 Function(Pointer<SpPort> port);
+
+/**
+ * Gets the number of bytes waiting in the output buffer.
+ *
+ * @param[in] port Pointer to a port structure. Must not be NULL.
+ *
+ * @return Number of bytes waiting on success, a negative error code otherwise.
+ *
+ * @since 0.1.0
+ */
+// enum sp_return sp_output_waiting(struct sp_port *port);
+int Function(Pointer<SpPort> port) sp_output_waiting = splib
+    .lookup<NativeFunction<_sp_output_waiting_native_t>>('sp_output_waiting')
+    .asFunction();
+typedef _sp_output_waiting_native_t = Int32 Function(Pointer<SpPort> port);
 
 /**
  * Read bytes from the specified serial port, without blocking.
@@ -293,6 +379,27 @@ int Function(Pointer<SpPort> port, int buffers) sp_flush =
     splib.lookup<NativeFunction<_sp_flush_native_t>>('sp_flush').asFunction();
 typedef _sp_flush_native_t = Int32 Function(
     Pointer<SpPort> port, Int32 buffers);
+
+/**
+ * Wait for buffered data to be transmitted.
+ *
+ * @warning If your program runs on Unix, defines its own signal handlers, and
+ *          needs to abort draining the output buffer when when these are
+ *          called, then you should not use this function. It repeats system
+ *          calls that return with EINTR. To be able to abort a drain from a
+ *          signal handler, you would need to implement your own blocking
+ *          drain by polling the result of sp_output_waiting().
+ *
+ * @param[in] port Pointer to a port structure. Must not be NULL.
+ *
+ * @return SP_OK upon success, a negative error code otherwise.
+ *
+ * @since 0.1.0
+ */
+// enum sp_return sp_drain(struct sp_port *port);
+int Function(Pointer<SpPort> port) sp_drain =
+    splib.lookup<NativeFunction<_sp_drain_native_t>>('sp_drain').asFunction();
+typedef _sp_drain_native_t = Int32 Function(Pointer<SpPort> port);
 
 /**
  * @}
@@ -381,3 +488,131 @@ void Function(Pointer<SpEventSet> event_set) sp_free_event_set = splib
     .asFunction();
 typedef _sp_free_event_set_native_t = Void Function(
     Pointer<SpEventSet> event_set);
+
+/**
+ * @}
+ *
+ * @defgroup Signals Signals
+ *
+ * Port signalling operations.
+ *
+ * @{
+ */
+
+/**
+ * Gets the status of the control signals for the specified port.
+ *
+ * The user should allocate a variable of type "enum sp_signal" and pass a
+ * pointer to this variable to receive the result. The result is a bitmask
+ * in which individual signals can be checked by bitwise OR with values of
+ * the sp_signal enum.
+ *
+ * @param[in] port Pointer to a port structure. Must not be NULL.
+ * @param[out] signal_mask Pointer to a variable to receive the result.
+ *                         Must not be NULL.
+ *
+ * @return SP_OK upon success, a negative error code otherwise.
+ *
+ * @since 0.1.0
+ */
+// enum sp_return sp_get_signals(struct sp_port *port, enum sp_signal *signal_mask);
+int Function(Pointer<SpPort> port, Pointer<Int32> signal_mask) sp_get_signals =
+    splib
+        .lookup<NativeFunction<_sp_get_signals_native_t>>('sp_get_signals')
+        .asFunction();
+typedef _sp_get_signals_native_t = Int32 Function(
+    Pointer<SpPort> port, Pointer<Int32> signal_mask);
+
+/**
+ * Put the port transmit line into the break state.
+ *
+ * @param[in] port Pointer to a port structure. Must not be NULL.
+ *
+ * @return SP_OK upon success, a negative error code otherwise.
+ *
+ * @since 0.1.0
+ */
+// enum sp_return sp_start_break(struct sp_port *port);
+int Function(Pointer<SpPort> port) sp_start_break = splib
+    .lookup<NativeFunction<_sp_start_break_native_t>>('sp_start_break')
+    .asFunction();
+typedef _sp_start_break_native_t = Int32 Function(Pointer<SpPort> port);
+
+/**
+ * Take the port transmit line out of the break state.
+ *
+ * @param[in] port Pointer to a port structure. Must not be NULL.
+ *
+ * @return SP_OK upon success, a negative error code otherwise.
+ *
+ * @since 0.1.0
+ */
+// enum sp_return sp_end_break(struct sp_port *port);
+int Function(Pointer<SpPort> port) sp_end_break = splib
+    .lookup<NativeFunction<_sp_end_break_native_t>>('sp_end_break')
+    .asFunction();
+typedef _sp_end_break_native_t = Int32 Function(Pointer<SpPort> port);
+
+/**
+ * @}
+ *
+ * @defgroup Errors Errors
+ *
+ * Obtaining error information.
+ *
+ * @{
+ */
+
+/**
+ * Get the error code for a failed operation.
+ *
+ * In order to obtain the correct result, this function should be called
+ * straight after the failure, before executing any other system operations.
+ * The result is thread-specific, and only valid when called immediately
+ * after a previous call returning SP_ERR_FAIL.
+ *
+ * @return The system's numeric code for the error that caused the last
+ *         operation to fail.
+ *
+ * @since 0.1.0
+ */
+// int sp_last_error_code(void);
+int Function() sp_last_error_code = splib
+    .lookup<NativeFunction<_sp_last_error_code_native_t>>('sp_last_error_code')
+    .asFunction();
+typedef _sp_last_error_code_native_t = Int32 Function();
+/**
+ * Get the error message for a failed operation.
+ *
+ * In order to obtain the correct result, this function should be called
+ * straight after the failure, before executing other system operations.
+ * The result is thread-specific, and only valid when called immediately
+ * after a previous call returning SP_ERR_FAIL.
+ *
+ * @return The system's message for the error that caused the last
+ *         operation to fail. This string may be allocated by the function,
+ *         and should be freed after use by calling sp_free_error_message().
+ *
+ * @since 0.1.0
+ */
+// char *sp_last_error_message(void);
+Pointer<ffi.Utf8> Function() sp_last_error_message = splib
+    .lookup<NativeFunction<_sp_last_error_message_native_t>>(
+        'sp_last_error_message')
+    .asFunction();
+typedef _sp_last_error_message_native_t = Pointer<ffi.Utf8> Function();
+
+/**
+ * Free an error message returned by sp_last_error_message().
+ *
+ * @param[in] message The error message string to free. Must not be NULL.
+ *
+ * @since 0.1.0
+ */
+// void sp_free_error_message(char *message);
+void Function(Pointer<ffi.Utf8> message) sp_free_error_message = splib
+    .lookup<NativeFunction<_sp_free_error_message_native_t>>(
+        'sp_free_error_message')
+    .asFunction();
+typedef _sp_free_error_message_native_t = Void Function(
+    Pointer<ffi.Utf8> message);

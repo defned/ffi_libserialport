@@ -20,6 +20,21 @@ part 'src/bindings/types.dart';
 part 'src/bindings/bindings.dart';
 part 'src/bindings/dlib.dart';
 
+/** Default implementation of [Exception] which carries a message. */
+class SerialPortException implements Exception {
+  final int code;
+  final dynamic message;
+
+  SerialPortException([this.code, this.message]);
+
+  String toString() {
+    if (message == null)
+      return "Exception $code";
+    else if (code == null) return "Exception $message";
+    return "Exception: $code $message";
+  }
+}
+
 class SerialPort {
   // static int _kMaxSmi64 = (1 << 62) - 1;
   // static int _kMaxSmi32 = (1 << 30) - 1;
@@ -91,7 +106,7 @@ class SerialPort {
   }
 
   /// Open the connection and read
-  void open() {
+  void open({int mode = SpMode.READ}) {
     if (isOpen) {
       throw "$portName is already opened";
     }
@@ -105,7 +120,7 @@ class SerialPort {
       throw "(sp_get_port_by_name) $portName : $error";
     }
 
-    if ((_error = sp_open(_ttyFd.value, SpMode.READ)) != SpReturn.OK) {
+    if ((_error = sp_open(_ttyFd.value, mode)) != SpReturn.OK) {
       ffi.free(_ttyFd);
       _ttyFd = nullptr;
       throw "(sp_open) $portName : $error";
@@ -116,8 +131,47 @@ class SerialPort {
     sp_set_stopbits(_ttyFd.value, stopbits);
     sp_set_parity(_ttyFd.value, parity);
 
-    Timer(_delay, _readNonBlocking);
+    if (mode == SpMode.READ || mode == SpMode.READ_WRITE)
+      Timer(_delay, _readNonBlocking);
+
     return;
+  }
+
+  /// Write
+  void writeString(String buffer,
+      {bool nonblocking = true, int timeout_ms = 0}) {
+    List<int> list = 'xxx'.codeUnits;
+    Uint8List bytes = Uint8List.fromList(list);
+    writeBytes(bytes, nonblocking: nonblocking, timeout_ms: timeout_ms);
+  }
+
+  void writeBytes(Uint8List bytes,
+      {bool nonblocking = true, int timeout_ms = 0}) {
+    int ret = 0;
+
+    // See: https://stackoverflow.com/questions/58838193/pass-uint8list-to-pointervoid-in-dartffi
+    // Allocate a pointer large enough.
+    final Pointer<Uint8> frameData = ffi.allocate<Uint8>(count: bytes.length);
+    // Create a list that uses our pointer and copy in the image data.
+    final pointerList = frameData.asTypedList(bytes.length);
+    pointerList.setAll(0, bytes);
+
+    if (nonblocking)
+      ret = sp_nonblocking_write(_ttyFd.value, frameData.cast(), bytes.length);
+    else
+      ret = sp_blocking_write(
+          _ttyFd.value, frameData.cast(), bytes.length, timeout_ms);
+
+    switch (ret) {
+      case SpReturn.ERR_ARG:
+        throw SerialPortException(SpReturn.ERR_ARG,
+            "Attempted serial port write with invalid arguments.");
+      case SpReturn.ERR_FAIL:
+        Pointer<ffi.Utf8> errorBuf = sp_last_error_message();
+        String errorMsg = ffi.Utf8.fromUtf8(errorBuf);
+        throw SerialPortException(
+            sp_last_error_code(), "Write error: $errorMsg");
+    }
   }
 
   /// Close the connection
