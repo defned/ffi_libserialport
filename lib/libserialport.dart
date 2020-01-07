@@ -140,7 +140,7 @@ class SerialPort {
   /// Write
   void writeString(String buffer,
       {bool nonblocking = true, int timeout_ms = 0}) {
-    List<int> list = 'xxx'.codeUnits;
+    List<int> list = buffer.codeUnits;
     Uint8List bytes = Uint8List.fromList(list);
     writeBytes(bytes, nonblocking: nonblocking, timeout_ms: timeout_ms);
   }
